@@ -1,5 +1,6 @@
 import type { FileNodeDTO, SearchHitDTO, SymbolDTO, ToolCall } from '../types'
 import { useUI } from '../store/ui'
+import { useSettings } from '../store/settings'
 
 export interface ToolDef {
   name: string
@@ -165,8 +166,11 @@ export async function executeTool(
     }
     case 'delete_file': {
       const p = String(args['path'] ?? '')
-      const ok = await confirm(`Delete "${p}"?`, { detail: 'The AI agent wants to delete this path. This can be rolled back via checkpoint.', danger: true })
-      if (!ok) return { result: 'User rejected the deletion.', mutated: false }
+      const fullAccess = useSettings.getState().fullAccess
+      if (!fullAccess) {
+        const ok = await confirm(`Delete "${p}"?`, { detail: 'The AI agent wants to delete this path. This can be rolled back via checkpoint.', danger: true })
+        if (!ok) return { result: 'User rejected the deletion.', mutated: false }
+      }
       await ctx.onSnapshot?.(p)
       await window.oxcode.files.delete(p)
       ctx.onChange?.(p, '', '') // recorded as change; revert handled by checkpoint
@@ -212,7 +216,7 @@ export async function executeTool(
     }
     case 'run_command': {
       const cmd = String(args['command'] ?? '')
-      if (DANGEROUS.test(cmd)) {
+      if (DANGEROUS.test(cmd) && !useSettings.getState().fullAccess) {
         const ok = await confirm(`AI wants to run a potentially destructive command`, { detail: cmd, danger: true })
         if (!ok) return { result: 'User rejected this command.', mutated: false }
       }

@@ -14,10 +14,11 @@ interface SettingsState {
   verifyMaxAttempts: number
   thinkingLevel: ThinkingLevel
   agentMaxIterations: number
+  fullAccess: boolean
   load: () => Promise<void>
   update: (patch: Partial<AISettingsDTO>) => Promise<void>
   fetchModels: () => Promise<boolean>
-  setLocal: (patch: Partial<Pick<SettingsState, 'inlineCompletion' | 'autoSave' | 'fontSize' | 'wordWrap' | 'verifyMaxAttempts' | 'thinkingLevel' | 'agentMaxIterations'>>) => void
+  setLocal: (patch: Partial<Pick<SettingsState, 'inlineCompletion' | 'autoSave' | 'fontSize' | 'wordWrap' | 'verifyMaxAttempts' | 'thinkingLevel' | 'agentMaxIterations' | 'fullAccess'>>) => void
 }
 
 const LS_KEY = 'oxcode.editor'
@@ -37,7 +38,8 @@ const DEFAULTS = {
   wordWrap: false,
   verifyMaxAttempts: 5,
   thinkingLevel: 'balanced' as ThinkingLevel,
-  agentMaxIterations: 24
+  agentMaxIterations: 24,
+  fullAccess: false
 } as const
 
 export const useSettings = create<SettingsState>((set, get) => ({
@@ -73,7 +75,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
 
   setLocal: (patch) => {
     set(patch as never)
-    const { inlineCompletion, autoSave, fontSize, wordWrap, verifyMaxAttempts, thinkingLevel, agentMaxIterations } = get()
-    localStorage.setItem(LS_KEY, JSON.stringify({ inlineCompletion, autoSave, fontSize, wordWrap, verifyMaxAttempts, thinkingLevel, agentMaxIterations }))
+    const { inlineCompletion, autoSave, fontSize, wordWrap, verifyMaxAttempts, thinkingLevel, agentMaxIterations, fullAccess } = get()
+    localStorage.setItem(LS_KEY, JSON.stringify({ inlineCompletion, autoSave, fontSize, wordWrap, verifyMaxAttempts, thinkingLevel, agentMaxIterations, fullAccess }))
   }
 }))

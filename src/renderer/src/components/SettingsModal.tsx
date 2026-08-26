@@ -28,6 +28,7 @@ export function SettingsModal(): React.JSX.Element | null {
   const verifyMax = useSettings((s) => s.verifyMaxAttempts)
   const thinkingLevel = useSettings((s) => s.thinkingLevel)
   const agentMaxIterations = useSettings((s) => s.agentMaxIterations)
+  const fullAccess = useSettings((s) => s.fullAccess)
   const [verifyLocal, setVerifyLocal] = useState<number | null>(null)
   const verifyShown = verifyLocal ?? verifyMax
 
@@ -149,6 +150,15 @@ export function SettingsModal(): React.JSX.Element | null {
 
               {tab === 'agent' && (
                 <>
+                  <div className="checkbox-row" style={{ alignItems: 'flex-start' }}>
+                    <input type="checkbox" checked={fullAccess} onChange={(e) => setLocal({ fullAccess: e.target.checked })} id="cb-fullaccess" style={{ marginTop: 3 }} />
+                    <label htmlFor="cb-fullaccess" style={{ cursor: 'pointer' }}>
+                      <span style={{ display: 'block', color: 'var(--text)', fontWeight: 650 }}>Full Access mode</span>
+                      <span style={{ display: 'block', marginTop: 3, color: 'var(--faint)', fontSize: 10.5, lineHeight: 1.55, whiteSpace: 'normal' }}>
+                        Let the AI run shell commands and delete files without asking for approval. Snapshots are still taken, so you can roll back — but use with care.
+                      </span>
+                    </label>
+                  </div>
                   <div className="field">
                     <label>Thinking Depth</label>
                     <select value={thinkingLevel} onChange={(e) => setLocal({ thinkingLevel: e.target.value as never })}>

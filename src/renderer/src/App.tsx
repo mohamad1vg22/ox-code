@@ -13,7 +13,7 @@ import { useChat } from './store/chat'
 import { useWorkspace, restoreLastWorkspace } from './store/workspace'
 
 export default function App(): React.JSX.Element {
-  const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   const welcome = useChat((s) => s.messages.length === 0) && !useWorkspace((s) => s.activePath)
 
   useEffect(() => {

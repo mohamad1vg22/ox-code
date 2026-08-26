@@ -634,3 +634,25 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 .al-main:hover { background: var(--bg-hover); color: var(--muted); }
 .al-main > svg:first-of-type { color: var(--accent); }
 .al-text.fail { color: var(--red); }
+
+/* ---- model menu: header + tier tags ---- */
+.ms-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px 6px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--faint);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+.ms-free-left { color: var(--green); font-family: var(--mono); font-size: 10px; text-transform: none; letter-spacing: 0; font-weight: 600; }
+.ms-tier { flex-shrink: 0; padding: 1px 6px; border-radius: 999px; font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.ms-tier.free { background: rgba(85, 214, 161, 0.13); color: var(--green); }
+.ms-tier.paid { background: rgba(185, 165, 255, 0.15); color: var(--violet); }
+
+/* ---- token meter polish ---- */
+.token-meter svg circle { transition: stroke 150ms ease; }

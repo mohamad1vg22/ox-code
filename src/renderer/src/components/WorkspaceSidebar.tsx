@@ -23,7 +23,7 @@ function initials(name: string): string {
 
 export function WorkspaceSidebar(): React.JSX.Element | null {
   const visible = useUI((s) => s.sidebarVisible)
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const [view, setView] = useState<SideView>('project')
   const root = useWorkspace((s) => s.root)
   const rootName = useWorkspace((s) => s.rootName)

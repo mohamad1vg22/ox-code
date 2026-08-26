@@ -624,12 +624,21 @@ function ModelSelector(): React.JSX.Element {
       </button>
       {open && (
         <div className="ms-menu" style={{ minWidth: 320 }}>
+          <div className="ms-head">
+            <span>Models</span>
+            {statuses[model]?.quotaPct !== undefined && (
+              <span className="ms-free-left" title="Remaining free-tier usage on the selected model">
+                {statuses[model].quotaPct}% free left
+              </span>
+            )}
+          </div>
           {sorted.map((m) => {
             const q = statuses[m]
             const st = q?.status ?? 'unknown'
             const isExhausted = st === 'exhausted'
             const isLow = st === 'low'
             const isLocked = st === 'locked'
+            const isFree = !isLocked
             return (
               <button
                 key={m}
@@ -648,18 +657,17 @@ function ModelSelector(): React.JSX.Element {
               >
                 <StatusDot status={st} />
                 <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m}</span>
+                <span className={`ms-tier ${isFree ? 'free' : 'paid'}`}>{isFree ? 'Free' : q?.planRequired ?? 'Premium'}</span>
                 {isLow && <span className="ms-badge low">{q?.remaining ?? '~15% left'}</span>}
                 {isExhausted && <span className="ms-badge exhausted">{fmtReset(q ?? {})}</span>}
-                {isLocked && <span className="ms-badge locked">Premium</span>}
-                {st === 'unknown' && <span className="ms-badge unknown">Status unavailable</span>}
-                {st === 'available' && q?.quotaPct !== undefined && <span className="ms-badge available">{q.quotaPct}% left</span>}
+                {st === 'unknown' && <span className="ms-badge unknown">?</span>}
+                {st === 'available' && q?.quotaPct !== undefined && <span className="ms-badge available">{q.quotaPct}%</span>}
                 {hover === m && (
                   <span className="ms-pop" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 50, width: 260, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10, lineHeight: 1.6, textAlign: 'left', whiteSpace: 'normal' }}>
-                    <div><b>{m}</b> — {st}</div>
-                    {q?.quotaPct !== undefined && <div>Used: {100 - (q.quotaPct ?? 0)}% · Remaining: {q.remaining}</div>}
+                    <div><b>{m}</b> — {isFree ? 'Free tier' : `Requires ${q?.planRequired ?? 'paid plan'}`}</div>
+                    {q?.quotaPct !== undefined && <div>Used: {100 - (q.quotaPct ?? 0)}% · Remaining: {q.quotaPct}%</div>}
                     {(q?.resetAt || q?.resetInSec !== undefined) && <div>{fmtReset(q)}</div>}
                     {q?.queueSec !== undefined && <div>Queue: ~{q.queueSec}s</div>}
-                    {isLocked && <div style={{ color: 'var(--violet)' }}>Requires: {q?.planRequired ?? 'Pro plan'}</div>}
                     {st === 'unknown' && <div>Could not fetch quota — model still selectable</div>}
                   </span>
                 )}
@@ -705,6 +713,96 @@ function QuotaWarning(): React.JSX.Element | null {
       {nextAvailable && nextAvailable !== model && (
         <button className="mini-btn" style={{ marginLeft: 8 }} onClick={() => void useSettings.getState().update({ model: nextAvailable })}>Switch to {nextAvailable.split('/').pop()}</button>
       )}
+    </div>
+  )
+}
+
+/* ============ Project language donut ============ */
+
+const LANG_COLORS: Record<string, string> = {
+  HTML: '#e34c26', CSS: '#663399', SCSS: '#c6538c', TypeScript: '#3178c6',
+  JavaScript: '#f1e05a', Python: '#3572a5', Go: '#00add8', Rust: '#dea584',
+  Java: '#b07219', Kotlin: '#a97bff', 'C#': '#178600', C: '#555555', 'C++': '#f34b7d',
+  PHP: '#4f5d95', Ruby: '#701516', Swift: '#f05138', Dart: '#00b4ab', Vue: '#41b883',
+  Svelte: '#ff3e00', SQL: '#e38c00', Shell: '#89e051', YAML: '#cb171e'
+}
+const FALLBACK_COLORS = ['#82aaff', '#55d6a1', '#e8c56a', '#ef7c86', '#b9a5ff', '#6ecddf']
+
+function ProjectDonut(): React.JSX.Element | null {
+  const root = useWorkspace((s) => s.root)
+  const [info, setInfo] = useState<import('../../types').ProjectInfoDTO | null>(null)
+  const [hover, setHover] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!root) {
+      setInfo(null)
+      return
+    }
+    let alive = true
+    const load = (): void => {
+      void window.oxcode.index.projectInfo().then((i) => {
+        if (alive) setInfo(i)
+      }).catch(() => {})
+    }
+    load()
+    const t = setInterval(load, 30000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [root])
+
+  if (!root || !info || !info.files) return null
+  const entries = Object.entries(info.languages).sort((a, b) => b[1] - a[1]).slice(0, 6)
+  if (!entries.length) return null
+  const total = entries.reduce((a, [, n]) => a + n, 0)
+
+  const r = 9
+  const c = 2 * Math.PI * r
+  let offset = 0
+  const segments = entries.map(([lang, count], i) => {
+    const frac = count / total
+    const seg = { lang, count, pct: Math.round(frac * 100), len: frac * c, dash: c - frac * c, off: offset, color: LANG_COLORS[lang] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length] }
+    offset += seg.len
+    return seg
+  })
+  const hovered = segments.find((s) => s.lang === hover)
+
+  return (
+    <div className="token-meter" title="Project composition by language">
+      <svg width="24" height="24" viewBox="0 0 24 24">
+        <circle className="tm-track" cx="12" cy="12" r={r} fill="none" strokeWidth="3" />
+        {segments.map((s) => (
+          <circle
+            key={s.lang}
+            cx="12" cy="12" r={r} fill="none"
+            stroke={s.color}
+            strokeWidth={hover === s.lang ? 4 : 3}
+            strokeDasharray={`${Math.max(0.5, s.len)} ${s.dash}`}
+            strokeDashoffset={-s.off}
+            transform="rotate(-90 12 12)"
+            onMouseEnter={() => setHover(s.lang)}
+            onMouseLeave={() => setHover(null)}
+            style={{ cursor: 'default', transition: 'stroke-width 120ms ease' }}
+          >
+            <title>{`${s.lang} — ${s.pct}% (${s.count} files)`}</title>
+          </circle>
+        ))}
+        <text className="tm-label" x="12" y="15" textAnchor="middle">
+          {hovered ? `${hovered.pct}%` : info.files > 999 ? `${Math.round(info.files / 100) / 10}k` : info.files}
+        </text>
+      </svg>
+      <span className="quota-text">
+        {hovered ? <><b style={{ color: hovered.color }}>{hovered.lang}</b> {hovered.pct}%</> : <b>project</b>}
+      </span>
+      <div className="token-tip">
+        <div style={{ marginBottom: 4 }}><b>Project composition</b> ({info.files} files)</div>
+        {segments.map((s) => (
+          <div key={s.lang}>
+            <span style={{ color: s.color }}>●</span> {s.lang}: <b>{s.pct}%</b> ({s.count})
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1190,6 +1288,7 @@ export function AIPanel(): React.JSX.Element {
               <div className="ai-bottom-bar">
                 <ModelSelector />
                 <TokenMeter />
+                <ProjectDonut />
                 <span style={{ flex: 1 }} />
                 <button
                   className="tb-btn"
