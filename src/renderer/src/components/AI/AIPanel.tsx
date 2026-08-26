@@ -91,6 +91,39 @@ function ToolLog({ execs }: { execs: ToolExecution[] }): React.JSX.Element | nul
   )
 }
 
+/* ============ Compact activity line (collapsed by default) ============ */
+
+function ActivityLine({ execs }: { execs: ToolExecution[] }): React.JSX.Element | null {
+  const [open, setOpen] = useState(false)
+  if (!execs.length) return null
+  const running = execs.filter((e) => e.status === 'running')
+  const current = running[running.length - 1] ?? execs[execs.length - 1]
+  const failed = execs.some((e) => e.status === 'error')
+  const { verb, file } = compactLabel(current)
+  const active = running.length > 0
+
+  return (
+    <div className="activity-line">
+      <button className="al-main" onClick={() => setOpen(!open)}>
+        {active ? (
+          <span className="spinner" style={{ width: 11, height: 11, borderWidth: 1.5 }} />
+        ) : failed ? (
+          <Icon name="x" size={12} />
+        ) : (
+          <Icon name="check" size={12} />
+        )}
+        <span className={`al-text ${failed && !active ? 'fail' : ''}`}>
+          {active
+            ? `${verb} ${file}${running.length > 1 ? ` (+${running.length - 1})` : ''}`
+            : `${execs.length} step${execs.length > 1 ? 's' : ''}`}
+        </span>
+        <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
+      </button>
+      {open && <ToolLog execs={execs} />}
+    </div>
+  )
+}
+
 /* ============ Messages ============ */
 
 function MessageView({ m }: { m: ChatMessage }): React.JSX.Element {
@@ -98,8 +131,8 @@ function MessageView({ m }: { m: ChatMessage }): React.JSX.Element {
   if (m.role === 'tool') return <></>
   return (
     <div className={`msg ${m.role} ${m.error ? 'error' : ''}`}>
-      {!!m.toolExecutions?.length && <ToolLog execs={m.toolExecutions} />}
-      {(m.content || !m.isStreaming || !!m.toolExecutions?.length || !!m.attachments?.length) && (
+      {m.role === 'assistant' && !!m.toolExecutions?.length && <ActivityLine execs={m.toolExecutions} />}
+      {(m.role === 'user' || m.content || !m.isStreaming || !m.toolExecutions?.length) && (
         <div className="bubble" dir={dir}>
           {!!m.attachments?.length && (
             <div className="msg-attachments">
@@ -782,6 +815,72 @@ function ChatHistoryDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   )
 }
 
+/* ============ Minimal welcome composer (clean start, like a blank AI chat) ============ */
+
+const DEPTH_LABELS: Record<string, string> = { eco: 'Low', balanced: 'Medium', deep: 'High', max: 'Max' }
+
+function WelcomeComposer(): React.JSX.Element {
+  const [input, setInput] = useState('')
+  const streaming = useChat((s) => s.streaming)
+  const thinkingLevel = useSettings((s) => s.thinkingLevel)
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+
+  const send = (): void => {
+    const value = input.trim()
+    if (!value || streaming) return
+    setInput('')
+    void handleSendMessage(value)
+  }
+
+  return (
+    <div className="welcome-stage">
+      <div className="welcome-center">
+        <div className="chat-welcome-mark">OX</div>
+        <div className="wc-greeting">{greeting}. What should we build?</div>
+        <div className="wc-input">
+          <textarea
+            autoFocus
+            placeholder="Ask anything — @ for files…"
+            value={input}
+            dir={isRTL(input) ? 'rtl' : 'ltr'}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <div className="wc-toolbar">
+            <ModelSelector />
+            <select
+              className="depth-select"
+              title="Thinking level"
+              value={thinkingLevel}
+              onChange={(e) => useSettings.getState().setLocal({ thinkingLevel: e.target.value as never })}
+            >
+              <option value="eco">{DEPTH_LABELS['eco']}</option>
+              <option value="balanced">{DEPTH_LABELS['balanced']}</option>
+              <option value="deep">{DEPTH_LABELS['deep']}</option>
+              <option value="max">{DEPTH_LABELS['max']}</option>
+            </select>
+            <span style={{ flex: 1 }} />
+            <button className="send-btn" onClick={send} disabled={!input.trim()} title="Send (Enter)">
+              <Icon name="arrow-up" size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="wc-footer">
+          <button onClick={() => void useWorkspace.getState().openFolder()}>Open project</button>
+          <span>·</span>
+          <button onClick={() => { useUI.getState().setSettingsTab('router'); useUI.getState().setSettingsOpen(true) }}>Settings</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ============ Main panel ============ */
 
 const DOCK_TABS: Array<{ id: DockTab; icon: string; label: string }> = [
@@ -798,6 +897,7 @@ export function AIPanel(): React.JSX.Element {
   const queue = useChat((s) => s.queue)
   const mode = useChat((s) => s.mode)
   const tree = useWorkspace((s) => s.tree)
+  const activePath = useWorkspace((s) => s.activePath)
   const [tab, setTab] = useState<DockTab>('chat')
   const [input, setInput] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -918,6 +1018,15 @@ export function AIPanel(): React.JSX.Element {
     const after = input.slice(mention.start + mention.query.length + 1)
     setInput(`${before}@${path}${after}`)
     setMention(null)
+  }
+
+  // clean start: no conversation yet and nothing open → minimal composer only
+  if (messages.length === 0 && !activePath) {
+    return (
+      <div className={`aipanel welcome ${visible ? '' : 'hidden'}`}>
+        <WelcomeComposer />
+      </div>
+    )
   }
 
   return (
@@ -1051,10 +1160,10 @@ export function AIPanel(): React.JSX.Element {
                     ))}
                   </div>
                   <select className="depth-select" title="Thinking depth" value={thinkingLevel} onChange={(e) => useSettings.getState().setLocal({ thinkingLevel: e.target.value as never })}>
-                    <option value="eco">Eco</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="deep">Deep</option>
-                    <option value="max">Max</option>
+                    <option value="eco">{DEPTH_LABELS['eco']}</option>
+                    <option value="balanced">{DEPTH_LABELS['balanced']}</option>
+                    <option value="deep">{DEPTH_LABELS['deep']}</option>
+                    <option value="max">{DEPTH_LABELS['max']}</option>
                   </select>
                   <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.json,.csv" style={{ display: 'none' }} onChange={(e) => { if (e.target.files) void processFiles(e.target.files); e.target.value='' }} />
                   <button className="tb-btn" title="Upload image/file" onClick={() => fileInputRef.current?.click()}>

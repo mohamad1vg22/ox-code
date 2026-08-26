@@ -9,15 +9,21 @@ import { DiffViewer } from './components/DiffViewer'
 import { ConfirmDialog, Toasts } from './components/Dialogs'
 import { useUI } from './store/ui'
 import { useSettings } from './store/settings'
+import { useChat } from './store/chat'
 import { useWorkspace, restoreLastWorkspace } from './store/workspace'
 
 export default function App(): React.JSX.Element {
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const welcome = useChat((s) => s.messages.length === 0) && !useWorkspace((s) => s.activePath)
 
   useEffect(() => {
     if (!window.oxcode) return
 
-    void useSettings.getState().load()
+    void (async () => {
+      await useSettings.getState().load()
+      // auto-load the model list so the selector works right away
+      await useSettings.getState().fetchModels()
+    })()
     void import('./store/sessions').then((m) => m.initSessionSync())
     void restoreLastWorkspace()
 
@@ -78,16 +84,16 @@ export default function App(): React.JSX.Element {
     <div className="app">
       <TitleBar />
       <div className="app-body">
-        <WorkspaceSidebar />
+        {!welcome && <WorkspaceSidebar />}
         <main className="workspace-main">
           <section className="chat-stage">
             <AIPanel />
           </section>
-          <InspectorPanel open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+          {!welcome && <InspectorPanel open={inspectorOpen} onClose={() => setInspectorOpen(false)} />}
+          {!welcome && !inspectorOpen && (
+            <button className="inspector-reopen" title="Show inspector" onClick={() => setInspectorOpen(true)}>›</button>
+          )}
         </main>
-        {!inspectorOpen && (
-          <button className="inspector-reopen" title="Show inspector" onClick={() => setInspectorOpen(true)}>›</button>
-        )}
       </div>
       <CommandPalette />
       <SettingsModal />
