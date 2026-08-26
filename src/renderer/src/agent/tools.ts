@@ -21,7 +21,20 @@ export const TOOL_DEFS: ToolDef[] = [
   { name: 'run_tests', description: 'Run the project test suite and capture output.', parameters: { type: 'object', properties: {} } },
   { name: 'git_status', description: 'Show git working tree status.', parameters: { type: 'object', properties: {} } },
   { name: 'git_diff', description: 'Show git diff (optionally for one path).', parameters: { type: 'object', properties: { path: { type: 'string' } } } },
-  { name: 'git_log', description: 'Show recent commit history.', parameters: { type: 'object', properties: { count: { type: 'number' } } } }
+  { name: 'git_log', description: 'Show recent commit history.', parameters: { type: 'object', properties: { count: { type: 'number' } } } },
+  {
+    name: 'mcp_tool',
+    description: 'Call an external MCP tool. The available servers/tools are listed in the EXTERNAL TOOLS (MCP) context block.',
+    parameters: {
+      type: 'object',
+      properties: {
+        server: { type: 'string', description: 'MCP server name' },
+        tool: { type: 'string', description: 'Tool name on that server' },
+        arguments: { type: 'object', description: 'Tool input arguments' }
+      },
+      required: ['server', 'tool']
+    }
+  }
 ]
 
 export function openAIToolsFormat(): unknown[] {
@@ -44,6 +57,7 @@ function summarize(name: string, args: Record<string, unknown>): string {
     case 'search_code': return `"${String(args['query'] ?? '').slice(0, 60)}"`
     case 'find_symbol': return String(args['query'] ?? '')
     case 'run_command': case 'run_tests': return String(args['command'] ?? '(test suite)')
+    case 'mcp_tool': return `${args['server'] ?? ''}.${args['tool'] ?? ''}`
     default: return ''
   }
 }
@@ -232,6 +246,17 @@ export async function executeTool(
       const n = Number(args['count'] ?? 10)
       const r = await window.oxcode.git.run(['log', '--oneline', '-n', String(Math.min(n, 50))])
       return { result: r.output, mutated: false }
+    }
+    case 'mcp_tool': {
+      const server = String(args['server'] ?? '')
+      const tool = String(args['tool'] ?? '')
+      const toolArgs = (args['arguments'] as Record<string, unknown> | undefined) ?? {}
+      try {
+        const result = await window.oxcode.mcp.call(server, tool, toolArgs)
+        return { result, mutated: false }
+      } catch (e) {
+        return { result: `Error: MCP call failed — ${(e as Error).message}`, mutated: false }
+      }
     }
     default:
       return { result: `Unknown tool: ${call.name}`, mutated: false }

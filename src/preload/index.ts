@@ -13,7 +13,9 @@ const api = {
   },
 
   workspace: {
-    open: (): Promise<{ root: string; isGitRepo: boolean } | null> => ipcRenderer.invoke('workspace:open')
+    open: (): Promise<{ root: string; isGitRepo: boolean } | null> => ipcRenderer.invoke('workspace:open'),
+    openPath: (root: string): Promise<{ root: string; isGitRepo: boolean } | null> =>
+      ipcRenderer.invoke('workspace:openPath', root)
   },
 
   files: {
@@ -50,7 +52,12 @@ const api = {
   index: {
     rebuild: (): Promise<number> => ipcRenderer.invoke('index:rebuild'),
     symbols: (query: string) => ipcRenderer.invoke('index:symbols', query),
-    projectInfo: () => ipcRenderer.invoke('index:projectInfo')
+    projectInfo: () => ipcRenderer.invoke('index:projectInfo'),
+    onInvalidated: (cb: () => void): (() => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('index:invalidated', handler)
+      return () => ipcRenderer.removeListener('index:invalidated', handler)
+    }
   },
 
   analyze: {
@@ -99,6 +106,27 @@ const api = {
   },
 
   recentChanges: (): Promise<Array<{ path: string; modifiedAgoMin: number }>> => ipcRenderer.invoke('recent:changes'),
+
+  mcp: {
+    list: (): Promise<Array<{ name: string; command: string; ok: boolean; error?: string; tools: Array<{ name: string; description?: string }> }>> =>
+      ipcRenderer.invoke('mcp:list'),
+    add: (cfg: { name: string; command: string; args?: string[] }): Promise<boolean> =>
+      ipcRenderer.invoke('mcp:add', cfg),
+    remove: (name: string): Promise<boolean> => ipcRenderer.invoke('mcp:remove', name),
+    call: (server: string, tool: string, args: Record<string, unknown>): Promise<string> =>
+      ipcRenderer.invoke('mcp:call', server, tool, args)
+  },
+
+  update: {
+    check: (): void => void ipcRenderer.invoke('update:check'),
+    download: (): void => ipcRenderer.send('update:download'),
+    install: (): void => ipcRenderer.send('update:install'),
+    onEvent: (cb: (p: { type: string; version?: string; pct?: number; message?: string }) => void): (() => void) => {
+      const handler = (_e: unknown, p: { type: string }): void => cb(p)
+      ipcRenderer.on('update:event', handler)
+      return () => ipcRenderer.removeListener('update:event', handler)
+    }
+  },
 
   rules: {
     load: (): Promise<string | null> => ipcRenderer.invoke('rules:load'),

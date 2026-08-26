@@ -9,7 +9,7 @@ import { DiffViewer } from './components/DiffViewer'
 import { ConfirmDialog, Toasts } from './components/Dialogs'
 import { useUI } from './store/ui'
 import { useSettings } from './store/settings'
-import { useWorkspace } from './store/workspace'
+import { useWorkspace, restoreLastWorkspace } from './store/workspace'
 
 export default function App(): React.JSX.Element {
   const [inspectorOpen, setInspectorOpen] = useState(true)
@@ -19,15 +19,32 @@ export default function App(): React.JSX.Element {
 
     void useSettings.getState().load()
     void import('./store/sessions').then((m) => m.initSessionSync())
+    void restoreLastWorkspace()
 
     const offChanged = window.oxcode.analyze.onChanged((paths) => {
       void useWorkspace.getState().refreshTree()
+      void useWorkspace.getState().refreshGitStatus()
       const changed = new Set(paths)
       const workspace = useWorkspace.getState()
       for (const tab of workspace.tabs) {
         if (changed.has(tab.path)) void workspace.reloadFileFromDisk(tab.path)
       }
     })
+
+    const offUpdate = window.oxcode.update.onEvent((p) => {
+      if (p.type === 'available') {
+        useUI.getState().toast('info', `Update ${p.version} available`, 'Download it from the Command Palette ("Check for Updates").')
+      } else if (p.type === 'progress') {
+        useUI.getState().toast('info', 'Downloading update…', `${p.pct}%`)
+      } else if (p.type === 'downloaded') {
+        useUI.getState().toast('success', `Update ${p.version} ready`, 'Restart to install — "Check for Updates" in the palette.')
+      }
+    })
+
+    // bridge main-process index invalidation into the renderer cache engine
+    const offInvalidated = window.oxcode.index.onInvalidated(() =>
+      window.dispatchEvent(new Event('oxcode:index-invalidated'))
+    )
 
     const onKey = (event: KeyboardEvent): void => {
       const ui = useUI.getState()
@@ -52,6 +69,8 @@ export default function App(): React.JSX.Element {
     return () => {
       window.removeEventListener('keydown', onKey)
       offChanged()
+      offUpdate()
+      offInvalidated()
     }
   }, [])
 

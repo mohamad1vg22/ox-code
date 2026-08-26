@@ -5,13 +5,18 @@ import { computeDiff, collapseContext } from '../lib/diff'
 import { changeStats } from '../core/verify'
 import { Icon } from './ui/Icon'
 
+function baseName(p: string): string {
+  return p.split(/[\\/]/).pop() ?? p
+}
+
 export function DiffViewer(): React.JSX.Element | null {
   const path = useUI((s) => s.diffModalPath)
   const setPath = useUI((s) => s.setDiffModalPath)
-  const changes = useChat((s) => s.pendingChanges)
+  const changes = useChat((s) => s.pendingChanges).filter((c) => !c.reverted)
   const reject = useChat((s) => s.rejectPendingChange)
   const accept = useChat((s) => s.acceptPendingChange)
-  const change = changes.find((c) => c.path === path && !c.reverted)
+  const idx = changes.findIndex((c) => c.path === path)
+  const change = idx >= 0 ? changes[idx] : undefined
 
   const lines = useMemo(
     () => (change ? collapseContext(computeDiff(change.before ?? '', change.after)) : []),
@@ -27,7 +32,20 @@ export function DiffViewer(): React.JSX.Element | null {
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setPath(null)}>
       <div className="modal wide">
         <div className="modal-head">
+          {changes.length > 1 && (
+            <button className="icon-btn" title={`Previous file (${idx + 1}/${changes.length})`} disabled={idx <= 0} style={{ opacity: idx <= 0 ? 0.3 : 1 }} onClick={() => setPath(changes[idx - 1].path)}>
+              <Icon name="chevron-left" size={13} />
+            </button>
+          )}
           <span className="mono">{change.path}</span>
+          {changes.length > 1 && (
+            <span className="faint" style={{ fontSize: 11 }}>{idx + 1}/{changes.length}</span>
+          )}
+          {changes.length > 1 && (
+            <button className="icon-btn" title="Next file" disabled={idx >= changes.length - 1} style={{ opacity: idx >= changes.length - 1 ? 0.3 : 1 }} onClick={() => setPath(changes[idx + 1].path)}>
+              <Icon name="chevron-right" size={13} />
+            </button>
+          )}
           <span className="diff-stats" style={{ marginLeft: 12 }}>
             <span className="add-n">+{addCount}</span> <span className="del-n">−{delCount}</span>
             {!!stats.functionsDelta && (
@@ -41,6 +59,16 @@ export function DiffViewer(): React.JSX.Element | null {
             <Icon name="x" size={13} />
           </button>
         </div>
+        {changes.length > 1 && (
+          <div className="dv-tabs">
+            {changes.map((c, i) => (
+              <button key={c.id} className={`dv-tab ${i === idx ? 'on' : ''}`} onClick={() => setPath(c.path)} title={c.path}>
+                <Icon name={c.before === null ? 'file-plus' : 'pencil'} size={11} />
+                {baseName(c.path)}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="modal-body">
           <div className="diff-view">
             {lines.map((l, i) => (
@@ -59,7 +87,12 @@ export function DiffViewer(): React.JSX.Element | null {
             className="btn small danger"
             onClick={async () => {
               await reject(change.id)
-              setPath(null)
+              if (changes.length > 1) {
+                const next = changes.find((c) => c.path !== change.path)
+                setPath(next?.path ?? null)
+              } else {
+                setPath(null)
+              }
             }}
           >
             <Icon name="x" size={12} /> Reject (revert file)
@@ -68,7 +101,12 @@ export function DiffViewer(): React.JSX.Element | null {
             className="btn small success"
             onClick={() => {
               accept(change.id)
-              setPath(null)
+              if (changes.length > 1) {
+                const next = changes.find((c) => c.path !== change.path)
+                setPath(next?.path ?? null)
+              } else {
+                setPath(null)
+              }
             }}
           >
             <Icon name="check" size={12} /> Accept

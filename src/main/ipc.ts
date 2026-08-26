@@ -10,6 +10,8 @@ import * as watcherSvc from './services/watcher'
 import { analyzeProject, type AnalysisResult } from './services/analyzer'
 import { startKeepAwake, stopKeepAwake, isKeepingAwake } from './services/power'
 import { detectValidations, recentChanges, type ValidationStep } from './services/validator'
+import * as mcpSvc from './services/mcp'
+import { initUpdater, checkForUpdates, downloadUpdate, installUpdate } from './updater'
 import { createHash } from 'crypto'
 
 type GetWindow = () => BrowserWindow | null
@@ -35,18 +37,34 @@ export function registerIpc(getWindow: GetWindow): void {
   ipcMain.on('window:close', () => win()?.close())
 
   // ---------- workspace / files ----------
+  async function openRoot(root: string): Promise<{ root: string; isGitRepo: boolean }> {
+    filesSvc.setWorkspaceRoot(root)
+    terminalSvc.createSession('default', root)
+    void indexerSvc.buildIndex()
+    watcherSvc.startWatching(root, (paths) => {
+      win()?.webContents.send('workspace:changed', paths)
+      win()?.webContents.send('index:invalidated', null)
+    })
+    return { root, isGitRepo: await gitSvc.isGitRepo(root) }
+  }
+
   ipcMain.handle('workspace:open', async () => {
     const result = await dialog.showOpenDialog(win()!, {
       properties: ['openDirectory'],
       title: 'Open Project Folder'
     })
     if (result.canceled || !result.filePaths[0]) return null
-    const root = result.filePaths[0]
-    filesSvc.setWorkspaceRoot(root)
-    terminalSvc.createSession('default', root)
-    void indexerSvc.buildIndex()
-    watcherSvc.startWatching(root, (paths) => win()?.webContents.send('workspace:changed', paths))
-    return { root, isGitRepo: await gitSvc.isGitRepo(root) }
+    return openRoot(result.filePaths[0])
+  })
+
+  ipcMain.handle('workspace:openPath', async (_e, root: string) => {
+    try {
+      const st = await fs.promises.stat(root)
+      if (!st.isDirectory()) return null
+    } catch {
+      return null
+    }
+    return openRoot(root)
   })
 
   ipcMain.handle('files:tree', (_e, dir?: string) => filesSvc.listTree(dir))
@@ -194,4 +212,20 @@ export function registerIpc(getWindow: GetWindow): void {
     await fs.promises.writeFile(file, text, 'utf-8')
     return true
   })
+
+  // ---------- MCP (external tool servers) ----------
+  ipcMain.handle('mcp:list', () => mcpSvc.listTools())
+  ipcMain.handle('mcp:add', (_e, cfg: mcpSvc.McpServerConfig) => mcpSvc.addServer(cfg))
+  ipcMain.handle('mcp:remove', (_e, name: string) => mcpSvc.removeServer(name))
+  ipcMain.handle(
+    'mcp:call',
+    (_e, server: string, tool: string, args: Record<string, unknown>) => mcpSvc.callTool(server, tool, args)
+  )
+
+  // ---------- auto-update ----------
+  ipcMain.handle('update:check', () => checkForUpdates())
+  ipcMain.on('update:download', () => downloadUpdate())
+  ipcMain.on('update:install', () => installUpdate())
+
+  void initUpdater((channel, payload) => win()?.webContents.send(channel, payload))
 }

@@ -27,6 +27,7 @@ interface ChatState {
   phase: string
   contextFiles: string[]
   contextChars: number
+  customInstruction: string
   plan: PlanState | null
   pendingChanges: PendingChange[]
   lastCheckpointRunId: string | null
@@ -47,6 +48,7 @@ interface ChatState {
   addContextFile: (path: string) => Promise<void>
   removeContextFile: (path: string) => void
   clearContext: () => void
+  setCustomInstruction: (text: string) => void
   setPlan: (p: PlanState | null) => void
   updatePlanSteps: (steps: string[]) => void
   advancePlan: () => void
@@ -88,6 +90,9 @@ export const useChat = create<ChatState>((set, get) => ({
   phase: '',
   contextFiles: [],
   contextChars: 0,
+  customInstruction: (() => {
+    try { return localStorage.getItem('oxcode.customInstruction') ?? '' } catch { return '' }
+  })(),
   plan: null,
   pendingChanges: [],
   lastCheckpointRunId: null,
@@ -153,6 +158,16 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   clearContext: () => set({ contextFiles: [], contextChars: 0 }),
+
+  setCustomInstruction: (text) => {
+    try {
+      if (text.trim()) localStorage.setItem('oxcode.customInstruction', text)
+      else localStorage.removeItem('oxcode.customInstruction')
+    } catch {
+      /* ignore */
+    }
+    set({ customInstruction: text })
+  },
 
   setPlan: (p) => set({ plan: p }),
 

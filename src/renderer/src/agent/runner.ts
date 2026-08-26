@@ -107,6 +107,20 @@ export async function runAgentTurn(userText?: string, attachments?: import('../t
       )
     }
     if (ctx.gitDiffStat.trim()) parts.push('--- CURRENT GIT DIFF STAT ---\n' + ctx.gitDiffStat)
+    try {
+      const mcpServers = await window.oxcode.mcp.list()
+      const lines = mcpServers.flatMap((s) =>
+        s.tools.map((t) => `- ${s.name}.${t.name}: ${t.description ?? 'no description'}`)
+      )
+      if (lines.length) {
+        parts.push(
+          '--- EXTERNAL TOOLS (MCP) ---\nCall them with the `mcp_tool` tool using {"server","tool","arguments"}.\n' +
+            lines.join('\n')
+        )
+      }
+    } catch {
+      /* MCP optional */
+    }
     contextBlock = parts.length ? '\n\n' + parts.join('\n\n') : ''
   } catch {
     /* context building is best-effort */
@@ -117,6 +131,13 @@ export async function runAgentTurn(userText?: string, attachments?: import('../t
     { role: 'system', content: buildSystemPrompt(mode, null, ws.rootName) },
     { role: 'system', content: HONESTY_CONTRACT }
   ]
+  const customInstruction = useChat.getState().customInstruction.trim()
+  if (customInstruction) {
+    apiMessages.splice(2, 0, {
+      role: 'system',
+      content: `USER SESSION INSTRUCTIONS (highest priority, follow throughout this session):\n${customInstruction}`
+    })
+  }
   for (const m of useChat.getState().messages) {
     if (m.role === 'user') {
       if (m.attachments && m.attachments.length) {

@@ -13,29 +13,48 @@ Connects to any OpenAI-compatible API router with full agent capabilities: file 
 ## ✨ Features
 
 ### Core IDE
-- 📁 **Workspace explorer** — open any local folder, tree view with context menu
+- 📁 **Workspace explorer** — open any local folder, tree view with context menu, **git status dots** (modified/added/deleted) per file
 - ✏️ **Monaco editor** — VS Code's editor with tabs, syntax highlighting, auto-save detection
 - 💻 **Real terminal** — persistent-cwd shell sessions with streamed output
 - 🔍 **Code search** — project-wide text & regex search
+- 💾 **Persistent workspace** — last opened folder, tabs and expanded folders are restored on launch
+- ⚡ **Incremental indexing** — the symbol index updates per-file on save/change (no full re-index)
 
 ### AI Agent
-- 🤖 **Agent loop with function calling** — 14 real tools: read/create/edit/delete/rename files, search, symbol lookup, run commands, run tests, git status/diff/log
+- 🤖 **Agent loop with function calling** — 15 real tools: read/create/edit/delete/rename files, search, symbol lookup, run commands, run tests, git status/diff/log, **MCP tools**
 - 📋 **Plan Mode** — analyze-first workflow with Approve / Cancel before execution
 - ⏮️ **Checkpoints** — every file mutation is snapshotted → one-click Rollback
-- 🔀 **Pending changes** — diff viewer with Accept / Reject per file
-- 💬 **Streaming chat** — markdown rendering, code copy, apply-to-editor, per-tool execution timeline
+- 🔀 **Pending changes** — multi-file diff viewer with per-file Accept / Reject and next/prev navigation
+- 💬 **Streaming chat** — markdown rendering, code copy, apply-to-editor, per-tool execution timeline, message queue
+- 🧩 **Multi-agent pipelines** — Build Feature (Architect→Coder→Tester→Reviewer), Fix & Verify, Quality Pass
 
 ### Intelligence
 - 🧠 **Project indexer** — symbol index + language/dependency/entry-point analysis
-- 📌 **Context manager** — pin files, token estimation, smart context building
+- 📌 **Context manager** — pin files, token estimation, smart context building, **`@`-mentions** (`@file.ts` in chat attaches the file)
 - 🩺 **Health tab** — auto-detected validation commands (tests / typecheck / lint / build)
 - 📜 **Project rules** — per-project memory stored locally (`rules.md`)
+- 📝 **Session instructions** — per-chat directives (e.g. "always answer in Persian") with highest priority
 - ⚡ **Inline completions** — Copilot-style ghost text, toggleable in Settings
+
+### Extensibility & Updates
+- 🔌 **MCP support** — connect external tool servers (Model Context Protocol, stdio transport); agent tools are injected into the model context automatically
+- 🔄 **Auto-update** — checks GitHub Releases in the background, download & install from the Command Palette
+- 📦 **Installer + portable** — NSIS setup and portable `.exe` via electron-builder
 
 ### Settings
 - Base URL, API Key, model picker (fetched from `/v1/models` of your router)
 - Temperature, max tokens, timeout, streaming, retries + connection test
 - Model quota/status monitoring
+
+## 🔌 MCP servers
+
+Connect any [Model Context Protocol](https://modelcontextprotocol.io) server (stdio transport):
+
+1. `Ctrl+Shift+P` → **MCP: Add Tool Server…**
+2. Give it a name, a command (e.g. `npx`) and args (e.g. `-y @modelcontextprotocol/server-fetch`)
+3. The server's tools are listed in the agent context — the model can call them with the `mcp_tool` tool
+
+Servers are stored in `mcp-servers.json` inside the app's user-data directory.
 
 ## ⌨️ Shortcuts
 
@@ -67,8 +86,10 @@ npm run dev
 
 ```bash
 npm run build    # compile main / preload / renderer
-npm run dist     # Windows portable .exe (electron-builder)
+npm run dist     # Windows installer (NSIS) + portable .exe (electron-builder)
 ```
+
+Releases published to GitHub Releases enable the built-in **auto-updater**.
 
 ### Connecting an AI provider
 
@@ -96,7 +117,9 @@ src/
 │       ├── watcher.ts     # workspace change watcher
 │       ├── analyzer.ts    # architecture analysis
 │       ├── validator.ts   # validation-step detection
+│       ├── mcp.ts         # MCP stdio client (external tool servers)
 │       └── ai.ts          # OpenAI-compatible client (SSE streaming, retries)
+├── updater.ts             # electron-updater (GitHub Releases)
 ├── preload/index.ts       # contextBridge API (window.oxcode)
 └── renderer/src/
     ├── ai/prompts.ts      # system prompts (provider-agnostic)
@@ -125,10 +148,13 @@ The model is never hardcoded — it is chosen in Settings from your provider's `
 
 ## 🗺️ Roadmap
 
-- [ ] Incremental indexing
-- [ ] Multi-agent pipeline (Architect / Coder / Tester / Reviewer)
-- [ ] Architecture analysis reports
-- [ ] PR description generation
+- [x] Incremental indexing
+- [x] Multi-agent pipeline (Architect / Coder / Tester / Reviewer)
+- [x] Architecture analysis (import graph, circular deps)
+- [x] PR description generation
+- [x] MCP support
+- [ ] Cloud sync for settings & sessions
+- [ ] Extension API
 
 ## 📄 License
 

@@ -798,10 +798,33 @@ export function AIPanel(): React.JSX.Element {
   const [input, setInput] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pendingAtts, setPendingAtts] = useState<import('../../types').Attachment[]>([])
+  const [showInstructions, setShowInstructions] = useState(false)
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [mentionSel, setMentionSel] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const model = useSettings((s) => s.settings?.model)
   const ctxFiles = useChat((s) => s.contextFiles)
+  const customInstruction = useChat((s) => s.customInstruction)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // flatten project tree for @-mention resolution
+  const allFiles = useMemo(() => {
+    const out: string[] = []
+    const walk = (nodes: import('../../types').FileNodeDTO[]): void => {
+      for (const n of nodes) {
+        if (n.type === 'file') out.push(n.path)
+        if (n.children && out.length < 4000) walk(n.children)
+      }
+    }
+    if (useWorkspace.getState().tree) walk(useWorkspace.getState().tree ?? [])
+    return out
+  }, [messages.length])
+
+  const mentionMatches = useMemo(() => {
+    if (!mention) return []
+    const q = mention.query.toLowerCase()
+    return allFiles.filter((p) => p.toLowerCase().includes(q)).slice(0, 8)
+  }, [mention, allFiles])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -833,12 +856,49 @@ export function AIPanel(): React.JSX.Element {
 
   const send = (text?: string): void => {
     const raw = text ?? input
-    const value = raw.trim()
+    let value = raw.trim()
     if (!value && !pendingAtts.length) return
     const atts = pendingAtts.length ? [...pendingAtts] : undefined
     // always clear
     setInput('')
     setPendingAtts([])
+    setMention(null)
+
+    // resolve @mentions into inline file context
+    const mentions = [...value.matchAll(/@([^\s@,;)}\]]+)/g)]
+    if (mentions.length) {
+      const blocks: string[] = []
+      for (const m of mentions) {
+        const q = m[1].toLowerCase()
+        const resolved = allFiles.find((p) => p.toLowerCase() === q) ?? allFiles.find((p) => p.toLowerCase().endsWith(q)) ??
+          allFiles.find((p) => p.split('/').pop()?.toLowerCase() === q.split('/').pop())
+        if (resolved) {
+          blocks.push(resolved)
+        }
+      }
+      if (blocks.length) {
+        void (async () => {
+          const ctxBlocks: string[] = []
+          for (const p of blocks.slice(0, 5)) {
+            try {
+              const r = await window.oxcode.files.read(p)
+              ctxBlocks.push(`[Referenced file: ${p}]\n\`\`\`\n${r.content.length > 8000 ? r.content.slice(0, 8000) + '\n[...truncated]' : r.content}\n\`\`\``)
+            } catch { /* unreadable */ }
+          }
+          if (ctxBlocks.length) {
+            value += '\n\n' + ctxBlocks.join('\n\n')
+            void useChat.getState().addContextFile(blocks[0]).catch(() => {})
+          }
+          dispatchSend(value, atts)
+        })()
+        return
+      }
+    }
+
+    dispatchSend(value, atts)
+  }
+
+  const dispatchSend = (value: string, atts?: import('../../types').Attachment[]): void => {
     if (streaming) {
       useChat.getState().enqueue(value)
       useUI.getState().toast('info', 'Added to the queue', 'It will run after the current response finishes.')
@@ -846,6 +906,14 @@ export function AIPanel(): React.JSX.Element {
     }
     setTab('chat')
     void handleSendMessage(value, atts)
+  }
+
+  const applyMention = (path: string): void => {
+    if (!mention) return
+    const before = input.slice(0, mention.start)
+    const after = input.slice(mention.start + mention.query.length + 1)
+    setInput(`${before}@${path}${after}`)
+    setMention(null)
   }
 
   return (
@@ -878,6 +946,21 @@ export function AIPanel(): React.JSX.Element {
             <div className="ai-input-zone">
               <QuotaWarning />
               <WorkingPill />
+              {showInstructions && (
+                <div className="instructions-bar">
+                  <Icon name="pencil" size={11} />
+                  <input
+                    autoFocus
+                    placeholder="Session instructions (e.g. 'Always answer in Persian', 'Prefer functional style')…"
+                    value={customInstruction}
+                    onChange={(e) => useChat.getState().setCustomInstruction(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && setShowInstructions(false)}
+                  />
+                  <button className="cc-x" title="Clear instructions" onClick={() => { useChat.getState().setCustomInstruction(''); setShowInstructions(false) }}>
+                    <Icon name="x" size={9} />
+                  </button>
+                </div>
+              )}
               <div className="input-shell" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void processFiles(e.dataTransfer.files) }}>
                 <ContextChips />
                 {!!pendingAtts.length && (
@@ -900,18 +983,56 @@ export function AIPanel(): React.JSX.Element {
                       : 'Type a message — / for skills, @ for files • drop images here'
                   }
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    setInput(e.target.value)
+                    const el = e.target
+                    const before = el.value.slice(0, el.selectionStart ?? 0)
+                    const m = before.match(/(?:^|\s)@([\w./\\-]*)$/)
+                    if (m) {
+                      setMention({ start: (el.selectionStart ?? 0) - m[1].length - 1, query: m[1] })
+                      setMentionSel(0)
+                    } else {
+                      setMention(null)
+                    }
+                  }}
                   onPaste={(e) => {
                     const files = Array.from(e.clipboardData.files)
                     if (files.length) { e.preventDefault(); void processFiles(files as unknown as FileList) }
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    if (mention && mentionMatches.length && ['ArrowDown', 'ArrowUp', 'Tab'].includes(e.key)) {
                       e.preventDefault()
-                      send()
+                      if (e.key === 'ArrowDown') setMentionSel((s) => Math.min(s + 1, mentionMatches.length - 1))
+                      else if (e.key === 'ArrowUp') setMentionSel((s) => Math.max(s - 1, 0))
+                      else applyMention(mentionMatches[mentionSel])
+                      return
+                    }
+                    if (e.key === 'Enter') {
+                      if (mention && mentionMatches.length && !e.shiftKey) {
+                        e.preventDefault()
+                        applyMention(mentionMatches[mentionSel])
+                        return
+                      }
+                      if (!e.shiftKey) {
+                        e.preventDefault()
+                        send()
+                      }
+                    } else if (e.key === 'Escape' && mention) {
+                      setMention(null)
                     }
                   }}
                 />
+                {mention && !!mentionMatches.length && (
+                  <div className="mention-menu">
+                    {mentionMatches.map((p, i) => (
+                      <button key={p} className={`mention-item ${i === mentionSel ? 'on' : ''}`} onMouseEnter={() => setMentionSel(i)} onClick={() => applyMention(p)}>
+                        <Icon name={fileTypeIcon(baseName(p))} size={11} />
+                        <span className="mn-name">{baseName(p)}</span>
+                        <span className="mn-path">{p}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="input-toolbar">
                   <div className="mode-toggle">
                     {(['agent', 'plan', 'ask'] as const).map((m) => (
@@ -935,8 +1056,12 @@ export function AIPanel(): React.JSX.Element {
                   <button className="tb-btn" title="Upload image/file" onClick={() => fileInputRef.current?.click()}>
                     <Icon name="image" size={13} />
                   </button>
-                  <button className="tb-btn" title="Attach file to context" onClick={() => setTab('context')}>
-                    <Icon name="file-plus" size={13} />
+                  <button
+                    className={`tb-btn ${showInstructions || useChat.getState().customInstruction ? 'active' : ''}`}
+                    title="Session instructions"
+                    onClick={() => setShowInstructions((v) => !v)}
+                  >
+                    <Icon name="pencil" size={13} />
                   </button>
                   {streaming ? (
                     <button className="send-btn stop" onClick={() => import('../../agent/runner').then((r) => r.abortActiveRun())} title="Stop">

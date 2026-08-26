@@ -1,6 +1,6 @@
 {
   "name": "ox-code",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OX Code - AI-powered Coding IDE",
   "main": "./out/main/index.js",
   "author": "OX",
@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "dist": "electron-vite build && electron-builder --win portable",
+    "dist": "electron-vite build && electron-builder --win nsis portable",
     "postdist": "powershell -ExecutionPolicy Bypass -File scripts/update-shortcut.ps1",
     "shortcut": "powershell -ExecutionPolicy Bypass -File scripts/update-shortcut.ps1",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
@@ -23,9 +23,19 @@
     "files": [
       "out/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "mohamad1vg22",
+      "repo": "ox-code"
+    },
     "win": {
-      "target": ["portable"],
+      "target": ["nsis", "portable"],
       "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "OXCode-Setup-${version}.exe"
     },
     "portable": {
       "artifactName": "OXCode-Portable.exe"
@@ -33,6 +43,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
+    "electron-updater": "^6.3.9",
     "monaco-editor": "^0.52.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

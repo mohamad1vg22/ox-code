@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FileNodeDTO } from '../../types'
 import { useWorkspace } from '../../store/workspace'
 import { useChat } from '../../store/chat'
@@ -8,6 +8,7 @@ import { Icon, fileTypeIcon } from '../ui/Icon'
 function TreeRow({ node, depth, filter }: { node: FileNodeDTO; depth: number; filter: string }): React.JSX.Element | null {
   const expanded = useWorkspace((s) => s.expanded.has(node.path))
   const activePath = useWorkspace((s) => s.activePath)
+  const gitStatus = useWorkspace((s) => s.gitStatus[node.path])
   const toggleExpand = useWorkspace((s) => s.toggleExpand)
   const openFile = useWorkspace((s) => s.openFile)
 
@@ -48,6 +49,7 @@ function TreeRow({ node, depth, filter }: { node: FileNodeDTO; depth: number; fi
           )}
         </span>
         <span className="name">{node.name}</span>
+        {gitStatus && <span className={`git-dot g-${(gitStatus === '?' ? 'u' : gitStatus[0]).toLowerCase()}`} title={`git: ${gitStatus}`} />}
       </div>
       {node.type === 'dir' && (expanded || autoExpand) && (
         <div className="tree-children">
@@ -132,9 +134,18 @@ function showNodeMenu(e: React.MouseEvent, node: FileNodeDTO): void {
 export function Explorer(): React.JSX.Element {
   const tree = useWorkspace((s) => s.tree)
   const root = useWorkspace((s) => s.root)
+  const isGitRepo = useWorkspace((s) => s.isGitRepo)
   const openFolder = useWorkspace((s) => s.openFolder)
   const refreshTree = useWorkspace((s) => s.refreshTree)
+  const refreshGitStatus = useWorkspace((s) => s.refreshGitStatus)
   const [filter, setFilter] = useState('')
+
+  useEffect(() => {
+    if (!root || !isGitRepo) return
+    void refreshGitStatus()
+    const t = setInterval(() => void refreshGitStatus(), 5000)
+    return () => clearInterval(t)
+  }, [root, isGitRepo])
 
   if (!root) {
     return (

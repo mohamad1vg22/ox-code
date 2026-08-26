@@ -164,6 +164,39 @@ async function generatePRDescription(): Promise<void> {  const ui = useUI.getSta
   ui.toast('success', 'PR description copied to clipboard', desc.slice(0, 120) + '…')
 }
 
+async function addMcpServer(): Promise<void> {
+  const ui = useUI.getState()
+  const name = prompt('MCP server name (e.g. "fetch", "sqlite"):')
+  if (!name) return
+  const command = prompt('Command to run (e.g. "npx"):')
+  if (!command) return
+  const argsRaw = prompt('Arguments (space-separated, e.g. "-y @modelcontextprotocol/server-fetch"):', '')
+  const args = argsRaw ? argsRaw.split(/\s+/).filter(Boolean) : []
+  const ok = await window.oxcode.mcp.add({ name, command, args })
+  if (ok) {
+    ui.toast('success', `MCP server "${name}" added`, 'Tools are injected into the agent context on the next message.')
+  } else {
+    ui.toast('error', 'Could not save MCP server')
+  }
+}
+
+async function removeMcpServer(): Promise<void> {
+  const ui = useUI.getState()
+  try {
+    const servers = await window.oxcode.mcp.list()
+    if (!servers.length) {
+      ui.toast('info', 'No MCP servers configured')
+      return
+    }
+    const name = prompt(`Which server to remove?\n\n${servers.map((s) => `- ${s.name}${s.ok ? '' : ' (unreachable)'}`).join('\n')}`)
+    if (!name) return
+    const ok = await window.oxcode.mcp.remove(name)
+    ui.toast(ok ? 'success' : 'error', ok ? `Removed "${name}"` : 'Not found')
+  } catch {
+    ui.toast('error', 'Could not list MCP servers')
+  }
+}
+
 function buildCommands(): Command[] {
   const ui = () => useUI.getState()
   const ws = () => useWorkspace.getState()
@@ -195,6 +228,12 @@ function buildCommands(): Command[] {
     { id: 'toggle-ai', title: 'Toggle AI Panel', category: 'View', shortcut: 'Ctrl+J', run: () => ui().toggleAIPanel() },
     { id: 'new-terminal-cmd', title: 'Terminal: Run npm run dev', category: 'Terminal', run: () => void window.oxcode.terminal.run('npm run dev') },
     { id: 'reindex', title: 'Rebuild Project Index', category: 'Project', run: async () => { const n = await window.oxcode.index.rebuild(); ui().toast('success', `Indexed ${n} files`) } },
+    { id: 'mcp-add', title: 'MCP: Add Tool Server…', category: 'MCP', run: () => void addMcpServer() },
+    { id: 'mcp-remove', title: 'MCP: Remove Tool Server…', category: 'MCP', run: () => void removeMcpServer() },
+    { id: 'update-check', title: 'App: Check for Updates', category: 'App', run: async () => {
+      useUI.getState().toast('info', 'Checking for updates…')
+      window.oxcode.update.check()
+    } },
     { id: 'settings', title: 'Open Settings', category: 'App', shortcut: 'Ctrl+,', run: () => { ui().setSettingsTab('router'); ui().setSettingsOpen(true) } }
   ]
 }
