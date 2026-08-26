@@ -1,3 +1,7 @@
+import * as fs from 'fs'
+import * as path from 'path'
+import { app } from 'electron'
+
 export interface AISettings {
   baseUrl: string
   apiKey: string
@@ -22,7 +26,29 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   retryCount: 2
 }
 
-let settings: AISettings = { ...DEFAULT_AI_SETTINGS }
+function settingsFile(): string {
+  return path.join(app.getPath('userData'), 'ai-settings.json')
+}
+
+function loadPersisted(): Partial<AISettings> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(settingsFile(), 'utf-8'))
+    return typeof raw === 'object' && raw ? raw : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistSettings(): void {
+  try {
+    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true })
+    fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2), 'utf-8')
+  } catch {
+    /* non-fatal — settings stay in memory for this session */
+  }
+}
+
+let settings: AISettings = { ...DEFAULT_AI_SETTINGS, ...loadPersisted() }
 
 export function getAISettings(): AISettings {
   return { ...settings }
@@ -30,6 +56,7 @@ export function getAISettings(): AISettings {
 
 export function updateAISettings(patch: Partial<AISettings>): AISettings {
   settings = { ...settings, ...patch }
+  persistSettings()
   return { ...settings }
 }
 
@@ -191,46 +218,77 @@ export interface ModelQuotaStatus {
 }
 
 export async function checkModelQuotas(models: string[]): Promise<ModelQuotaStatus[]> {
-  // Try lightweight status endpoint first; fallback to heuristic if not available
-  const tryEndpoints = ['/quota', '/usage', '/billing/usage', '/auth/status']
-  for (const ep of tryEndpoints) {
-    try {
-      const res = await fetch(`${apiRoot(settings.baseUrl)}${ep}`, {
-        headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}
-      })
-      if (!res.ok) continue
+  // Fetch full model metadata to determine free vs paid access
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = new Map<string, any>()
+  try {
+    const res = await fetch(`${apiRoot(settings.baseUrl)}/models`, {
+      headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}
+    })
+    if (res.ok) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const j: any = await res.json().catch(() => null)
-      if (!j) continue
-      // Normalize if endpoint returns quota data
-      if (Array.isArray(j.data) || j.models || j.quota) {
-        return models.map((id) => ({
-          id,
-          status: 'available' as const,
-          quotaPct: 72,
-          remaining: '~72% left',
-          resetAt: new Date(Date.now() + 3600_000).toISOString()
-        }))
-      }
-    } catch {}
+      for (const m of j?.data ?? []) if (m?.id) meta.set(m.id, m)
+    }
+  } catch {
+    /* metadata is optional */
   }
-  // Heuristic fallback: inspect models fetch headers for rate-limit info
+
+  // Rate-limit headers give the account-wide free quota when provided
+  let quotaPct: number | undefined
+  let resetInSec: number | undefined
   try {
     const res = await fetch(`${apiRoot(settings.baseUrl)}/models`, {
       headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}
     })
     const remaining = res.headers.get('x-ratelimit-remaining') ?? res.headers.get('x-quota-remaining')
+    const limit = res.headers.get('x-ratelimit-limit') ?? res.headers.get('x-quota-limit')
     const reset = res.headers.get('x-ratelimit-reset') ?? res.headers.get('x-quota-reset')
     if (remaining !== null) {
-      const pct = Math.max(0, Math.min(100, Number(remaining) || 50))
-      return models.map((id) => {
-        let status: ModelQuotaStatus['status'] = 'available'
-        if (pct < 5) status = 'exhausted'
-        else if (pct < 20) status = 'low'
-        return { id, status, quotaPct: pct, remaining: `${pct}% left`, resetInSec: reset ? Number(reset) : 3600 }
-      })
+      const rem = Number(remaining)
+      const lim = Number(limit)
+      quotaPct = lim > 0 ? Math.max(0, Math.min(100, Math.round((rem / lim) * 100))) : Math.max(0, Math.min(100, rem))
+      resetInSec = reset ? Number(reset) : undefined
     }
-  } catch {}
-  // Default: unknown (do not falsely claim available)
-  return models.map((id) => ({ id, status: 'unknown' as const }))
+  } catch {
+    /* quota headers optional */
+  }
+
+  return models.map((id) => {
+    const m = meta.get(id)
+    const paid = detectPaid(m)
+    if (paid) {
+      return { id, status: 'locked' as const, planRequired: paid }
+    }
+    if (quotaPct === undefined) return { id, status: 'unknown' as const }
+    let status: ModelQuotaStatus['status'] = 'available'
+    if (quotaPct <= 0) status = 'exhausted'
+    else if (quotaPct < 20) status = 'low'
+    return { id, status, quotaPct, remaining: `${quotaPct}% left`, resetInSec }
+  })
+}
+
+/** Inspects model metadata for pricing/plan fields; returns the plan name when paid, null when free/unknown. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function detectPaid(m: any): string | null {
+  if (!m || typeof m !== 'object') return null
+  const plan =
+    m.plan_required ?? m.planRequired ?? m.required_plan ??
+    (typeof m.plan === 'string' && m.plan && m.plan.toLowerCase() !== 'free' ? m.plan : undefined)
+  if (plan) return String(plan)
+  if (m.access === 'premium' || m.tier === 'premium' || m.tier === 'paid' || m.premium === true) return 'Premium'
+  if (m.free === false) return 'Premium'
+  const pricing = m.pricing ?? m.cost
+  if (pricing && typeof pricing === 'object') {
+    const total =
+      Number(pricing.prompt ?? pricing.input ?? 0) +
+      Number(pricing.completion ?? pricing.output ?? 0)
+    if (Number.isFinite(total) && total > 0) return 'Pay-as-you-go'
+  } else if (typeof pricing === 'number' && pricing > 0) {
+    return 'Pay-as-you-go'
+  }
+  if (Array.isArray(m.tags) && m.tags.some((t: unknown) => typeof t === 'string' && /paid|premium/i.test(t))) {
+    return 'Premium'
+  }
+  return null
 }
