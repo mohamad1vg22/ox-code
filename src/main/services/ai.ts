@@ -256,7 +256,7 @@ export async function checkModelQuotas(models: string[]): Promise<ModelQuotaStat
 
   return models.map((id) => {
     const m = meta.get(id)
-    const paid = detectPaid(m)
+    const paid = detectPaid(id, m)
     if (paid) {
       return { id, status: 'locked' as const, planRequired: paid }
     }
@@ -268,27 +268,41 @@ export async function checkModelQuotas(models: string[]): Promise<ModelQuotaStat
   })
 }
 
-/** Inspects model metadata for pricing/plan fields; returns the plan name when paid, null when free/unknown. */
+/**
+ * Decides whether a model is paid. Returns the plan label when paid, null when free.
+ * Free models are the ones with "free" in their id (e.g. "x-preview-f-free")
+ * or an explicit free signal in metadata; everything else is treated as paid.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function detectPaid(m: any): string | null {
-  if (!m || typeof m !== 'object') return null
-  const plan =
-    m.plan_required ?? m.planRequired ?? m.required_plan ??
-    (typeof m.plan === 'string' && m.plan && m.plan.toLowerCase() !== 'free' ? m.plan : undefined)
-  if (plan) return String(plan)
-  if (m.access === 'premium' || m.tier === 'premium' || m.tier === 'paid' || m.premium === true) return 'Premium'
-  if (m.free === false) return 'Premium'
-  const pricing = m.pricing ?? m.cost
-  if (pricing && typeof pricing === 'object') {
-    const total =
-      Number(pricing.prompt ?? pricing.input ?? 0) +
-      Number(pricing.completion ?? pricing.output ?? 0)
-    if (Number.isFinite(total) && total > 0) return 'Pay-as-you-go'
-  } else if (typeof pricing === 'number' && pricing > 0) {
-    return 'Pay-as-you-go'
+function detectPaid(id: string, m: any): string | null {
+  // explicit paid signals in metadata win
+  if (m && typeof m === 'object') {
+    const plan =
+      m.plan_required ?? m.planRequired ?? m.required_plan ??
+      (typeof m.plan === 'string' && m.plan && m.plan.toLowerCase() !== 'free' ? m.plan : undefined)
+    if (plan) return String(plan)
+    if (m.access === 'premium' || m.tier === 'premium' || m.tier === 'paid' || m.premium === true) return 'Premium'
+    if (m.free === false) return 'Premium'
+    const pricing = m.pricing ?? m.cost
+    if (pricing && typeof pricing === 'object') {
+      const total =
+        Number(pricing.prompt ?? pricing.input ?? 0) +
+        Number(pricing.completion ?? pricing.output ?? 0)
+      if (Number.isFinite(total) && total > 0) return 'Pay-as-you-go'
+    } else if (typeof pricing === 'number' && pricing > 0) {
+      return 'Pay-as-you-go'
+    }
+    if (Array.isArray(m.tags) && m.tags.some((t: unknown) => typeof t === 'string' && /paid|premium/i.test(t))) {
+      return 'Premium'
+    }
   }
-  if (Array.isArray(m.tags) && m.tags.some((t: unknown) => typeof t === 'string' && /paid|premium/i.test(t))) {
-    return 'Premium'
+  // name-based: "free" in the id means free tier
+  if (/free/i.test(id)) return null
+  // explicit free metadata
+  if (m && typeof m === 'object') {
+    if (m.free === true || m.access === 'free' || m.tier === 'free') return null
+    if (typeof m.plan === 'string' && m.plan.toLowerCase() === 'free') return null
   }
-  return null
+  // no "free" in the name and no free signal → assume paid
+  return 'Premium'
 }

@@ -14,7 +14,9 @@ import { useWorkspace, restoreLastWorkspace } from './store/workspace'
 
 export default function App(): React.JSX.Element {
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const welcome = useChat((s) => s.messages.length === 0) && !useWorkspace((s) => s.activePath)
+  const noMessages = useChat((s) => s.messages.length === 0)
+  const activePath = useWorkspace((s) => s.activePath)
+  const welcome = noMessages && !activePath
 
   useEffect(() => {
     if (!window.oxcode) return

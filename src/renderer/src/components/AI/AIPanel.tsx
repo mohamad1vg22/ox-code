@@ -644,10 +644,6 @@ function ModelSelector(): React.JSX.Element {
                 key={m}
                 className={`ms-item ${m === model ? 'on' : ''} ${isExhausted ? 'exhausted' : ''} ${isLocked ? 'locked' : ''}`}
                 onClick={() => {
-                  if (isLocked) {
-                    window.open('https://opencode.ai/pricing', '_blank')
-                    return
-                  }
                   void useSettings.getState().update({ model: m })
                   setOpen(false)
                 }}
@@ -921,6 +917,8 @@ function WelcomeComposer(): React.JSX.Element {
   const [input, setInput] = useState('')
   const streaming = useChat((s) => s.streaming)
   const thinkingLevel = useSettings((s) => s.thinkingLevel)
+  const apiKey = useSettings((s) => s.settings?.apiKey ?? '')
+  const lastError = useChat((s) => s.stats.error)
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
@@ -936,6 +934,16 @@ function WelcomeComposer(): React.JSX.Element {
       <div className="welcome-center">
         <div className="chat-welcome-mark">OX</div>
         <div className="wc-greeting">{greeting}. What should we build?</div>
+        {!apiKey && (
+          <button className="wc-apiwarn" onClick={() => { useUI.getState().setSettingsTab('router'); useUI.getState().setSettingsOpen(true) }}>
+            <Icon name="alert-triangle" size={12} /> No API key configured — click here to set it in Settings
+          </button>
+        )}
+        {!!apiKey && lastError && (
+          <div className="wc-apiwarn static">
+            <Icon name="alert-triangle" size={12} /> {lastError.slice(0, 160)}
+          </div>
+        )}
         <div className="wc-input">
           <textarea
             autoFocus
@@ -964,9 +972,19 @@ function WelcomeComposer(): React.JSX.Element {
               <option value="max">{DEPTH_LABELS['max']}</option>
             </select>
             <span style={{ flex: 1 }} />
-            <button className="send-btn" onClick={send} disabled={!input.trim()} title="Send (Enter)">
-              <Icon name="arrow-up" size={14} />
-            </button>
+            {streaming ? (
+              <button
+                className="send-btn stop"
+                onClick={() => import('../../agent/runner').then((r) => r.abortActiveRun())}
+                title="Stop"
+              >
+                <Icon name="stop" size={13} />
+              </button>
+            ) : (
+              <button className="send-btn" onClick={send} disabled={!input.trim()} title="Send (Enter)">
+                <Icon name="arrow-up" size={14} />
+              </button>
+            )}
           </div>
         </div>
         <div className="wc-footer">
