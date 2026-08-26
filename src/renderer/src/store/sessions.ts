@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { useChat } from './chat'
 import type { ChatMessage, RequestStats } from '../types'
 
@@ -40,7 +40,7 @@ function makeSession(): SessionTab {
 
 function titleFrom(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim()
-  return t.length > 42 ? t.slice(0, 42).trimEnd() + '…' : t || 'New session'
+  return t.length > 42 ? t.slice(0, 42).trimEnd() + 'â€¦' : t || 'New session'
 }
 
 const LS_KEY = 'oxcode.sessions.v1'
@@ -56,7 +56,18 @@ function loadPersisted(): { sessions: SessionTab[]; activeId: string } | null {
     // sanitize: truncate huge messages to avoid quota
     const sessions = data.sessions.slice(0, MAX_SESSIONS).map((s) => ({
       ...s,
-      messages: (s.messages ?? []).slice(-MAX_STORED_MESSAGES)
+      createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
+      messages: ((s.messages ?? []) as ChatMessage[])
+        .slice(-MAX_STORED_MESSAGES)
+        .map((m) => ({
+          ...m,
+          content: typeof m.content === 'string' ? m.content : '',
+          attachments: Array.isArray(m.attachments)
+            ? m.attachments
+                .filter((a) => a && typeof a.name === 'string')
+                .map((a) => ({ ...a, mime: typeof a.mime === 'string' ? a.mime : 'application/octet-stream', dataUrl: typeof a.dataUrl === 'string' ? a.dataUrl : '' }))
+            : undefined
+        }))
     })) as SessionTab[]
     return { sessions, activeId: data.activeId }
   } catch { return null }

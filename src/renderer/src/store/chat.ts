@@ -189,10 +189,15 @@ export const useChat = create<ChatState>((set, get) => ({
   rejectPendingChange: async (id) => {
     const change = get().pendingChanges.find((c) => c.id === id)
     if (!change || change.reverted) return
-    if (change.before === null) {
-      await window.oxcode.files.delete(change.path)
-    } else {
-      await window.oxcode.files.write(change.path, change.before)
+    try {
+      if (change.before === null) {
+        await window.oxcode.files.delete(change.path)
+      } else {
+        await window.oxcode.files.write(change.path, change.before)
+      }
+    } catch {
+      /* keep the change listed so the user can retry */
+      return
     }
     await useWorkspace.getState().refreshTree()
     if (useWorkspace.getState().activePath === change.path) {

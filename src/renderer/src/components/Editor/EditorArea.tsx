@@ -81,7 +81,13 @@ export function EditorArea(): React.JSX.Element {
   const tabs = useWorkspace((s) => s.tabs)
   const activePath = useWorkspace((s) => s.activePath)
   const contents = useWorkspace((s) => s.contents)
+  const fontSize = useSettings((s) => s.fontSize)
+  const wordWrap = useSettings((s) => s.wordWrap)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ fontSize, wordWrap: wordWrap ? 'on' : 'off' })
+  }, [fontSize, wordWrap])
 
   useEffect(() => {
     registerInlineCompletion()
@@ -171,7 +177,7 @@ export function EditorArea(): React.JSX.Element {
             editorRef.current = editor
           }}
           options={{
-            fontSize: useSettings.getState().fontSize,
+            fontSize,
             fontFamily: "'JetBrains Mono','Cascadia Code',Consolas,monospace",
             fontLigatures: true,
             minimap: { enabled: true, scale: 0.9 },
@@ -182,7 +188,7 @@ export function EditorArea(): React.JSX.Element {
             scrollBeyondLastLine: false,
             automaticLayout: true,
             tabSize: 2,
-            wordWrap: useSettings.getState().wordWrap ? 'on' : 'off',
+            wordWrap: wordWrap ? 'on' : 'off',
             inlineSuggest: { enabled: true },
             suggestOnTriggerCharacters: true,
             renderWhitespace: 'selection',

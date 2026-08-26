@@ -26,6 +26,8 @@ export function HealthTab(): React.JSX.Element {
     try {
       const r = (await window.oxcode.validate.run(step)) as unknown as RunResult
       setResults((prev) => ({ ...prev, [step.name]: r }))
+    } catch (e) {
+      setResults((prev) => ({ ...prev, [step.name]: { name: step.name, ok: false, output: (e as Error).message } }))
     } finally {
       setRunning(null)
     }

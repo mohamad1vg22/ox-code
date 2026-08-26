@@ -14,6 +14,8 @@ export function TerminalPanel({ embedded = false }: { embedded?: boolean } = {})
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const outRef = useRef<HTMLDivElement>(null)
+  const linesRef = useRef<TermLine[]>([])
+  linesRef.current = lines
 
   useEffect(() => {
     const onDebug = (): void => {
@@ -55,9 +57,6 @@ export function TerminalPanel({ embedded = false }: { embedded?: boolean } = {})
     })
     return off
   }, [])
-
-  const linesRef = useRef<TermLine[]>([])
-  linesRef.current = lines
 
   useEffect(() => {
     outRef.current?.scrollTo({ top: outRef.current.scrollHeight })

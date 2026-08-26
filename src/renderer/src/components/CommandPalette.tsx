@@ -35,7 +35,10 @@ export function CommandPalette(): React.JSX.Element | null {
   const filtered = commands.filter(
     (c) => !query || `${c.category}: ${c.title}`.toLowerCase().includes(query.toLowerCase())
   )
-  if (sel >= filtered.length) setSel(Math.max(0, filtered.length - 1))
+
+  useEffect(() => {
+    if (sel >= filtered.length) setSel(Math.max(0, filtered.length - 1))
+  }, [sel, filtered.length])
 
   if (!open) return null
 

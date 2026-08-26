@@ -41,13 +41,17 @@ export function GitPanel(): React.JSX.Element {
   const isGitRepo = useWorkspace((s) => s.isGitRepo)
   const [statusOut, setStatusOut] = useState('')
   const [commitMsg, setCommitMsg] = useState('')
-  const ui = useUI()
+  const ui = useUI.getState()
 
   const refresh = async (): Promise<void> => {
     if (!root || !isGitRepo) return
-    const r = await window.oxcode.git.run(['status', '--short', '--branch'])
-    setStatusOut(r.output)
-    void useWorkspace.getState().refreshGitStatus()
+    try {
+      const r = await window.oxcode.git.run(['status', '--short', '--branch'])
+      setStatusOut(r.output)
+      void useWorkspace.getState().refreshGitStatus()
+    } catch {
+      /* git not ready yet — next poll will retry */
+    }
   }
 
   useEffect(() => {

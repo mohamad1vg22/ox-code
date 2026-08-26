@@ -123,8 +123,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!get().root) return
     set({ loadingTree: true })
     try {
-      const tree = await window.oxcode.files.tree()
-      set({ tree: tree.children ?? [] })
+      const tree = (await window.oxcode.files.tree()) as { children?: FileNodeDTO[] } | null
+      set({ tree: tree?.children ?? [] })
+    } catch {
+      set({ tree: [] })
     } finally {
       set({ loadingTree: false })
     }

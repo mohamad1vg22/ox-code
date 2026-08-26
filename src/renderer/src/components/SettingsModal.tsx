@@ -26,6 +26,8 @@ export function SettingsModal(): React.JSX.Element | null {
   const setLocal = useSettings((s) => s.setLocal)
   const [testing, setTesting] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle')
   const verifyMax = useSettings((s) => s.verifyMaxAttempts)
+  const thinkingLevel = useSettings((s) => s.thinkingLevel)
+  const agentMaxIterations = useSettings((s) => s.agentMaxIterations)
   const [verifyLocal, setVerifyLocal] = useState<number | null>(null)
   const verifyShown = verifyLocal ?? verifyMax
 
@@ -149,7 +151,7 @@ export function SettingsModal(): React.JSX.Element | null {
                 <>
                   <div className="field">
                     <label>Thinking Depth</label>
-                    <select value={useSettings.getState().thinkingLevel} onChange={(e) => setLocal({ thinkingLevel: e.target.value as never })}>
+                    <select value={thinkingLevel} onChange={(e) => setLocal({ thinkingLevel: e.target.value as never })}>
                       <option value="eco">Eco — fast, 8 steps</option>
                       <option value="balanced">Balanced — 16 steps</option>
                       <option value="deep">Deep — 24 steps</option>
@@ -159,7 +161,7 @@ export function SettingsModal(): React.JSX.Element | null {
                   </div>
                   <div className="field">
                     <label>Custom iterations (advanced)</label>
-                    <input type="number" min={2} max={64} value={useSettings((s) => s.agentMaxIterations)} onChange={(e) => setLocal({ agentMaxIterations: Math.max(2, Math.min(64, Number(e.target.value)||24)) })} />
+                    <input type="number" min={2} max={64} value={agentMaxIterations} onChange={(e) => setLocal({ agentMaxIterations: Math.max(2, Math.min(64, Number(e.target.value)||24)) })} />
                   </div>
                   <div className="field">
                     <label>Max verification attempts: {verifyShown}</label>

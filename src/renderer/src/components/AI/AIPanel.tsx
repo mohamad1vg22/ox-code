@@ -645,19 +645,22 @@ function QuotaWarning(): React.JSX.Element | null {
   const models = useSettings((s) => s.models)
   const map = useModelStatus((s) => s.map)
   const q = map[model]
-  if (!q) return null
-  if (q.status !== 'exhausted' && q.status !== 'low') return null
-  const isExhausted = q.status === 'exhausted'
+  const isExhausted = q?.status === 'exhausted'
   const [tick, setTick] = useState(0)
+
   useEffect(() => {
     if (!isExhausted) return
     const t = setInterval(() => setTick((x) => x + 1), 1000)
     return () => clearInterval(t)
   }, [isExhausted])
+
+  if (!q) return null
+  if (q.status !== 'exhausted' && q.status !== 'low') return null
   void tick
   const fmt = (): string => {
     const base = useModelStatus.getState().lastFetch
-    const sec = q.resetInSec !== undefined ? Math.max(0, q.resetInSec - Math.floor((Date.now() - base) / 1000)) : 0
+    const elapsed = base ? Date.now() - base : 0
+    const sec = q.resetInSec !== undefined ? Math.max(0, q.resetInSec - Math.floor(elapsed / 1000)) : 0
     const m = Math.floor(sec / 60); const s = sec % 60
     return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
   }
@@ -794,6 +797,7 @@ export function AIPanel(): React.JSX.Element {
   const streaming = useChat((s) => s.streaming)
   const queue = useChat((s) => s.queue)
   const mode = useChat((s) => s.mode)
+  const tree = useWorkspace((s) => s.tree)
   const [tab, setTab] = useState<DockTab>('chat')
   const [input, setInput] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -802,9 +806,9 @@ export function AIPanel(): React.JSX.Element {
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
   const [mentionSel, setMentionSel] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const model = useSettings((s) => s.settings?.model)
   const ctxFiles = useChat((s) => s.contextFiles)
   const customInstruction = useChat((s) => s.customInstruction)
+  const thinkingLevel = useSettings((s) => s.thinkingLevel)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // flatten project tree for @-mention resolution
@@ -816,9 +820,9 @@ export function AIPanel(): React.JSX.Element {
         if (n.children && out.length < 4000) walk(n.children)
       }
     }
-    if (useWorkspace.getState().tree) walk(useWorkspace.getState().tree ?? [])
+    if (tree) walk(tree)
     return out
-  }, [messages.length])
+  }, [tree])
 
   const mentionMatches = useMemo(() => {
     if (!mention) return []
@@ -922,8 +926,8 @@ export function AIPanel(): React.JSX.Element {
         <div className="ai-head">
           <button className="tb-btn" title="Chat history" onClick={() => setHistoryOpen(true)}><Icon name="history" size={14} /></button>
           <span className="title">{tab === 'chat' ? 'AI Assistant' : DOCK_TABS.find((t) => t.id === tab)?.label}</span>
-          <span className="model-pill" title="Active model">{model ?? 'no model'}</span>
-          <button className="tb-btn" title="New chat" onClick={() => useSessions.getState().newSession()}><Icon name="plus" size={13} /></button>
+          {streaming && <span className="ai-head-live"><span className="wp-dot" /> working…</span>}
+          <button className="tb-btn" style={{ marginLeft: 'auto' }} title="New chat" onClick={() => useSessions.getState().newSession()}><Icon name="plus" size={13} /></button>
         </div>
         <ChatHistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} />
 
@@ -1046,7 +1050,7 @@ export function AIPanel(): React.JSX.Element {
                       </button>
                     ))}
                   </div>
-                  <select className="depth-select" title="Thinking depth" value={useSettings((s) => s.thinkingLevel)} onChange={(e) => useSettings.getState().setLocal({ thinkingLevel: e.target.value as never })}>
+                  <select className="depth-select" title="Thinking depth" value={thinkingLevel} onChange={(e) => useSettings.getState().setLocal({ thinkingLevel: e.target.value as never })}>
                     <option value="eco">Eco</option>
                     <option value="balanced">Balanced</option>
                     <option value="deep">Deep</option>
